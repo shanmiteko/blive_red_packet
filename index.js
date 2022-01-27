@@ -72,6 +72,8 @@ class RedPacketMonitor {
         this.liveflow = null;
         this._no_relation_modify = false;
         this.has_redpacket = false;
+        this.timer = 0;
+        this.close_time = Date.now() + 300000000;
     }
 
     no_relation_modify() {
@@ -80,6 +82,7 @@ class RedPacketMonitor {
     }
 
     async start() {
+        this.closeTimerUpdate()
         this.liveflow = new LiveFlow()
             .setCookie(cookie_str)
             .setRoomId(this.room_id)
@@ -108,10 +111,23 @@ class RedPacketMonitor {
                         ruid: this.ruid,
                         spm_id: "444.8.red_envelope.extract"
                     })
-                }).then(res => res.json()).then(console.log);
+                }).then(res => res.json()).then(data => {
+                    console.log(data)
+                    if (data.code === 0) {
+                        clearTimeout(this.timer)
+                        this.close_time += msg.last_time * 1000000;
+                        this.closeTimerUpdate()
+                    }
+                });
             });
         this.liveflow.run()
-        return true
+    }
+
+    closeTimerUpdate() {
+        console.log(`will disconnect in ${this.close_time}`);
+        this.timer = setTimeout(() => {
+            this.close()
+        }, this.close_time - Date.now());
     }
 
     async close() {
@@ -158,14 +174,9 @@ class RedPacketMonitor {
 getAreaList().then(ids => {
     ids.forEach(id => {
         getList(id, 0, 1).then(args => {
-            args.forEach(async arg => {
+            args.forEach(arg => {
                 let red_packet_monitor = new RedPacketMonitor(...arg)
-                // .no_relation_modify();
-                if (await red_packet_monitor.start()) {
-                    setTimeout(() => {
-                        red_packet_monitor.close()
-                    }, 5 * 60 * 1000);
-                }
+                red_packet_monitor.start()
             })
         })
     })
