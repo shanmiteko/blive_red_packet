@@ -71,6 +71,7 @@ class RedPacketMonitor {
         this.ruid = ruid;
         this.liveflow = null;
         this._no_relation_modify = false;
+        this.has_redpacket = false;
     }
 
     no_relation_modify() {
@@ -83,36 +84,40 @@ class RedPacketMonitor {
             .setCookie(cookie_str)
             .setRoomId(this.room_id)
             .setUid(Number(cookie.get("DedeUserID")))
-            .addCommandHandle("POPULARITY_RED_POCKET_START", (msg) => {
+            .addCommandHandle("POPULARITY_RED_POCKET_START", async (msg) => {
                 console.log(msg);
-                this.relation_modify(1).then(() => {
-                    fetch("https://api.live.bilibili.com/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw", {
-                        method: "POST",
-                        headers: {
-                            cookie: cookie_str,
-                            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
-                            "content-type": "application/x-www-form-urlencoded"
-                        },
-                        body: stringify({
-                            lot_id: msg.data.lot_id,
-                            csrf: cookie.get("bili_jct"),
-                            csrf_token: cookie.get("bili_jct"),
-                            visit_id: "",
-                            jump_from: "",
-                            session_id: "",
-                            room_id: this.room_id,
-                            ruid: this.ruid,
-                            spm_id: "444.8.red_envelope.extract"
-                        })
-                    }).then(res => res.json()).then(console.log);
-                })
+                if (!this.has_redpacket) {
+                    this.has_redpacket = true;
+                    await this.relation_modify(1)
+                }
+                fetch("https://api.live.bilibili.com/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw", {
+                    method: "POST",
+                    headers: {
+                        cookie: cookie_str,
+                        "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
+                        "content-type": "application/x-www-form-urlencoded"
+                    },
+                    body: stringify({
+                        lot_id: msg.data.lot_id,
+                        csrf: cookie.get("bili_jct"),
+                        csrf_token: cookie.get("bili_jct"),
+                        visit_id: "",
+                        jump_from: "",
+                        session_id: "",
+                        room_id: this.room_id,
+                        ruid: this.ruid,
+                        spm_id: "444.8.red_envelope.extract"
+                    })
+                }).then(res => res.json()).then(console.log);
             });
         this.liveflow.run()
         return true
     }
 
     async close() {
-        await this.relation_modify(2)
+        if (this.has_redpacket) {
+            await this.relation_modify(2)
+        }
         this.liveflow.close()
     }
 
