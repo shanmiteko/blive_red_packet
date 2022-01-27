@@ -87,8 +87,8 @@ class RedPacketMonitor {
             .setCookie(cookie_str)
             .setRoomId(this.room_id)
             .setUid(Number(cookie.get("DedeUserID")))
-            .addCommandHandle("POPULARITY_RED_POCKET_START", async (msg) => {
-                console.log(msg);
+            .addCommandHandle("POPULARITY_RED_POCKET_START", async ({ data }) => {
+                console.log(data);
                 if (!this.has_redpacket) {
                     this.has_redpacket = true;
                     await this.relation_modify(1)
@@ -101,7 +101,7 @@ class RedPacketMonitor {
                         "content-type": "application/x-www-form-urlencoded"
                     },
                     body: stringify({
-                        lot_id: msg.data.lot_id,
+                        lot_id: data.lot_id,
                         csrf: cookie.get("bili_jct"),
                         csrf_token: cookie.get("bili_jct"),
                         visit_id: "",
@@ -111,11 +111,11 @@ class RedPacketMonitor {
                         ruid: this.ruid,
                         spm_id: "444.8.red_envelope.extract"
                     })
-                }).then(res => res.json()).then(data => {
-                    console.log(data)
-                    if (data.code === 0) {
+                }).then(res => res.json()).then(res => {
+                    console.log(res)
+                    if (res.code === 0) {
                         clearTimeout(this.timer)
-                        this.close_time += msg.last_time * 1000000;
+                        this.close_time += data.last_time * 1000000;
                         this.closeTimerUpdate()
                     }
                 });
