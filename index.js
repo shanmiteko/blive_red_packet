@@ -160,7 +160,7 @@ getAreaList().then(ids => {
         getList(id, 0, 1).then(args => {
             args.forEach(async arg => {
                 let red_packet_monitor = new RedPacketMonitor(...arg)
-                    .no_relation_modify();
+                // .no_relation_modify();
                 if (await red_packet_monitor.start()) {
                     setTimeout(() => {
                         red_packet_monitor.close()
