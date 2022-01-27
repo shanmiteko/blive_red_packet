@@ -47,6 +47,26 @@ async function getList(parent_area_id, area_id, page) {
     }
 }
 
+/**
+ * @returns {Promise<number[]>}
+ */
+async function getAttentionList() {
+    const resp = await fetch("https://api.vc.bilibili.com/feed/v1/feed/get_attention_list", {
+        method: "GET",
+        headers: {
+            cookie: cookie_str,
+            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
+        }
+    })
+    const data = await resp.json()
+    if (data.code === 0) {
+        return data.data.list || []
+    } else {
+        console.log(data)
+        return []
+    }
+}
+
 class CookiePaser {
     /**
      * @param {string} cookie
@@ -64,6 +84,7 @@ class CookiePaser {
 }
 
 const cookie = new CookiePaser(cookie_str);
+let attention_list = [];
 
 class RedPacketMonitor {
     constructor(roomid, ruid) {
@@ -83,6 +104,9 @@ class RedPacketMonitor {
 
     async start() {
         this.closeTimerUpdate()
+        if (attention_list.includes(this.ruid)) {
+            this.no_relation_modify()
+        }
         this.liveflow = new LiveFlow()
             .setCookie(cookie_str)
             .setRoomId(this.room_id)
@@ -127,7 +151,7 @@ class RedPacketMonitor {
         console.log(`will disconnect in ${this.close_time}`);
         this.timer = setTimeout(() => {
             this.close()
-        }, this.close_time - Date.now());
+        }, (this.close_time - Date.now()) / 1000);
     }
 
     async close() {
@@ -171,12 +195,15 @@ class RedPacketMonitor {
     }
 }
 
-getAreaList().then(ids => {
-    ids.forEach(id => {
-        getList(id, 0, 1).then(args => {
-            args.forEach(arg => {
-                let red_packet_monitor = new RedPacketMonitor(...arg)
-                red_packet_monitor.start()
+getAttentionList().then(alists => {
+    attention_list = alists
+    getAreaList().then(ids => {
+        ids.forEach(id => {
+            getList(id, 0, 1).then(args => {
+                args.forEach(arg => {
+                    let red_packet_monitor = new RedPacketMonitor(...arg)
+                    red_packet_monitor.start()
+                })
             })
         })
     })
