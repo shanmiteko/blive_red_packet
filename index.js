@@ -79,13 +79,13 @@ class RedPacketMonitor {
     }
 
     async start() {
-        if (await this.relation_modify(1)) {
-            this.liveflow = new LiveFlow()
-                .setCookie(cookie_str)
-                .setRoomId(this.room_id)
-                .setUid(Number(cookie.get("DedeUserID")))
-                .addCommandHandle("POPULARITY_RED_POCKET_START", (msg) => {
-                    console.log(msg);
+        this.liveflow = new LiveFlow()
+            .setCookie(cookie_str)
+            .setRoomId(this.room_id)
+            .setUid(Number(cookie.get("DedeUserID")))
+            .addCommandHandle("POPULARITY_RED_POCKET_START", (msg) => {
+                console.log(msg);
+                this.relation_modify(1).then(() => {
                     fetch("https://api.live.bilibili.com/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw", {
                         method: "POST",
                         headers: {
@@ -94,6 +94,7 @@ class RedPacketMonitor {
                             "content-type": "application/x-www-form-urlencoded"
                         },
                         body: stringify({
+                            lot_id: msg.data.lot_id,
                             csrf: cookie.get("bili_jct"),
                             csrf_token: cookie.get("bili_jct"),
                             visit_id: "",
@@ -103,17 +104,11 @@ class RedPacketMonitor {
                             ruid: this.ruid,
                             spm_id: "444.8.red_envelope.extract"
                         })
-                    })
-                        .then(res => res.json())
-                        .then(json => {
-                            console.log(json);
-                        });
-                });
-            this.liveflow.run()
-            return true
-        } else {
-            return false
-        }
+                    }).then(res => res.json()).then(console.log);
+                })
+            });
+        this.liveflow.run()
+        return true
     }
 
     async close() {
