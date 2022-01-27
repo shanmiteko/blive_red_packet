@@ -1,0 +1,15 @@
+{
+  "name": "blive_red_packet",
+  "version": "0.0.1",
+  "description": "抢直播间红包",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "shanmite",
+  "license": "ISC",
+  "dependencies": {
+    "bili-live-comment-ws": "1",
+    "node-fetch": "2"
+  }
+}
