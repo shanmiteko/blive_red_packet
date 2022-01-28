@@ -25,25 +25,25 @@ async function getAreaList(source_id = 1) {
 }
 
 /**
- * @param {number} parent_area_id
- * @param {number} area_id
  * @param {number} page
- * @returns {Promise<[number,number][]>}
+ * @returns {(parent_area_id: number) => Promise<[number,number][]>}
  */
-async function getList(parent_area_id, area_id, page) {
-    const resp = await fetch(`https://api.live.bilibili.com/xlive/web-interface/v1/second/getList?platform=web&parent_area_id=${parent_area_id}&page=${page}&area_id=${area_id}`, {
-        method: "GET",
-        headers: {
-            cookie: cookie_str,
-            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
+function getList(page) {
+    return async (parent_area_id) => {
+        const resp = await fetch(`https://api.live.bilibili.com/xlive/web-interface/v1/second/getList?platform=web&parent_area_id=${parent_area_id}&page=${page}&area_id=0`, {
+            method: "GET",
+            headers: {
+                cookie: cookie_str,
+                "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
+            }
+        })
+        const data = await resp.json()
+        if (data.code === 0) {
+            return data.data.list.map(it => [it.roomid, it.uid])
+        } else {
+            console.log(data)
+            return []
         }
-    })
-    const data = await resp.json()
-    if (data.code === 0) {
-        return data.data.list.map(it => [it.roomid, it.uid])
-    } else {
-        console.log(data)
-        return []
     }
 }
 
@@ -67,6 +67,26 @@ async function getAttentionList() {
     }
 }
 
+/**
+ * @template T
+ * @param {(data: T) => void} fn
+ * @returns {(arr: Array<T>) => void}
+ */
+function forEach(fn) {
+    return (arr) => arr.forEach(fn)
+}
+
+/**
+ * 1..num
+ * @param {number} num
+ * @returns 
+ */
+function list(num) {
+    return Array(num)
+        .fill()
+        .map((_, n) => n + 1)
+}
+
 class CookiePaser {
     /**
      * @param {string} cookie
@@ -83,8 +103,11 @@ class CookiePaser {
     }
 }
 
-const cookie = new CookiePaser(cookie_str);
-let attention_list = [];
+const cookie = new CookiePaser(cookie_str)
+let attention_list = {
+    inner: [],
+    async set(inner) { this[inner] = inner }
+}
 
 class RedPacketMonitor {
     constructor(roomid, ruid) {
@@ -104,7 +127,7 @@ class RedPacketMonitor {
 
     async start() {
         this.closeTimerUpdate()
-        if (attention_list.includes(this.ruid)) {
+        if (attention_list.inner.includes(this.ruid)) {
             this.no_relation_modify()
         }
         this.liveflow = new LiveFlow()
@@ -117,32 +140,34 @@ class RedPacketMonitor {
                     this.has_redpacket = true;
                     await this.relation_modify(1)
                 }
-                fetch("https://api.live.bilibili.com/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw", {
-                    method: "POST",
-                    headers: {
-                        cookie: cookie_str,
-                        "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
-                        "content-type": "application/x-www-form-urlencoded"
-                    },
-                    body: stringify({
-                        lot_id: data.lot_id,
-                        csrf: cookie.get("bili_jct"),
-                        csrf_token: cookie.get("bili_jct"),
-                        visit_id: "",
-                        jump_from: "",
-                        session_id: "",
-                        room_id: this.room_id,
-                        ruid: this.ruid,
-                        spm_id: "444.8.red_envelope.extract"
-                    })
-                }).then(res => res.json()).then(res => {
-                    console.log(res)
-                    if (res.code === 0) {
-                        clearTimeout(this.timer)
-                        this.close_time += data.last_time * 1000000;
-                        this.closeTimerUpdate()
-                    }
-                });
+                if (!this._no_relation_modify) {
+                    fetch("https://api.live.bilibili.com/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw", {
+                        method: "POST",
+                        headers: {
+                            cookie: cookie_str,
+                            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
+                            "content-type": "application/x-www-form-urlencoded"
+                        },
+                        body: stringify({
+                            lot_id: data.lot_id,
+                            csrf: cookie.get("bili_jct"),
+                            csrf_token: cookie.get("bili_jct"),
+                            visit_id: "",
+                            jump_from: "",
+                            session_id: "",
+                            room_id: this.room_id,
+                            ruid: this.ruid,
+                            spm_id: "444.8.red_envelope.extract"
+                        })
+                    }).then(res => res.json()).then(res => {
+                        console.log(res)
+                        if (res.code === 0) {
+                            clearTimeout(this.timer)
+                            this.close_time += data.last_time * 1000000;
+                            this.closeTimerUpdate()
+                        }
+                    });
+                }
             });
         await this.liveflow.run()
     }
@@ -195,16 +220,13 @@ class RedPacketMonitor {
     }
 }
 
-getAttentionList().then(alists => {
-    attention_list = alists
-    getAreaList().then(ids => {
-        ids.forEach(id => {
-            getList(id, 0, 1).then(args => {
-                args.forEach(arg => {
-                    let red_packet_monitor = new RedPacketMonitor(...arg)
-                    red_packet_monitor.start()
-                })
-            })
-        })
-    })
-})
+Promise.resolve()
+    .then(getAttentionList)
+    .then(attention_list.set)
+    .then(getAreaList)
+    .then(forEach(
+        id => forEach(
+            page => getList(page)(id)
+                .then(forEach(arg => new RedPacketMonitor(...arg).no_relation_modify().start()))
+        )(list(1))
+    ))
