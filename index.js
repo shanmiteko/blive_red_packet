@@ -144,7 +144,7 @@ class RedPacketMonitor {
                     }
                 });
             });
-        this.liveflow.run()
+        await this.liveflow.run()
     }
 
     closeTimerUpdate() {
