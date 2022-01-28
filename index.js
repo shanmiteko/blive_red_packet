@@ -117,7 +117,7 @@ class RedPacketMonitor {
         this._no_relation_modify = false;
         this.has_redpacket = false;
         this.timer = 0;
-        this.close_time = Date.now() + 300000000;
+        this.close_time = 300000;
     }
 
     no_relation_modify() {
@@ -163,7 +163,7 @@ class RedPacketMonitor {
                         console.log(res)
                         if (res.code === 0) {
                             clearTimeout(this.timer)
-                            this.close_time += data.last_time * 1000000;
+                            this.close_time = 300000 + data.last_time * 1000;
                             this.closeTimerUpdate()
                         }
                     });
@@ -173,10 +173,10 @@ class RedPacketMonitor {
     }
 
     closeTimerUpdate() {
-        console.log(`will disconnect in ${this.close_time}`);
+        console.log(`will disconnect in ${this.close_time}ms`);
         this.timer = setTimeout(() => {
             this.close()
-        }, (this.close_time - Date.now()) / 1000);
+        }, this.close_time);
     }
 
     async close() {
