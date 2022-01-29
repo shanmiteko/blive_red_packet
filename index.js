@@ -67,6 +67,26 @@ async function getAttentionList() {
 }
 
 /**
+ * @returns {Promise<[string,string,number]>}
+ */
+async function getBagList() {
+    const resp = await fetch("https://api.live.bilibili.com/xlive/web-room/v1/gift/bag_list", {
+        method: "GET",
+        headers: {
+            cookie: cookie_str,
+            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
+        }
+    })
+    const data = await resp.json()
+    if (data.code === 0) {
+        return (data.data.list || []).map(it => [it.gift_name, it.corner_mark, it.gift_num])
+    } else {
+        console.log(data)
+        return []
+    }
+}
+
+/**
  * @param {Array<Promise<any>>} jobs
  */
 async function pipe(jobs) {
@@ -206,6 +226,7 @@ class RedPacketMonitor {
                         }
                     });
                 }
+                getBagList().then(console.log)
             });
         await this.liveflow.run()
     }
@@ -259,7 +280,7 @@ class RedPacketMonitor {
 }
 
 pipe([
-    () => require("./cookie.json")["cookie"],
+    () => cookie_str,
     parseCookie,
     setGlobal('cookie'),
     getAttentionList,
@@ -270,7 +291,7 @@ pipe([
         getList,
         forEach(apply(
             RedPacketMonitor.build,
-            red_packet_monitor => red_packet_monitor.no_relation_modify().start()
+            red_packet_monitor => red_packet_monitor.start()
         ))
     ))
 ])

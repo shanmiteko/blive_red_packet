@@ -13,7 +13,7 @@ pipe([
         getList,
         forEach(apply(
             RedPacketMonitor.build,
-            red_packet_monitor => red_packet_monitor.no_relation_modify().start()
+            red_packet_monitor => red_packet_monitor.start()
         ))
     ))
 ])
