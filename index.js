@@ -26,24 +26,23 @@ async function getAreaList(source_id = 1) {
 
 /**
  * @param {number} page
- * @returns {(parent_area_id: number) => Promise<[number,number][]>}
+ * @param {number} parent_area_id
+ * @returns {Promise<[number,number][]>}
  */
-function getList(page) {
-    return async (parent_area_id) => {
-        const resp = await fetch(`https://api.live.bilibili.com/xlive/web-interface/v1/second/getList?platform=web&parent_area_id=${parent_area_id}&page=${page}&area_id=0`, {
-            method: "GET",
-            headers: {
-                cookie: cookie_str,
-                "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
-            }
-        })
-        const data = await resp.json()
-        if (data.code === 0) {
-            return data.data.list.map(it => [it.roomid, it.uid])
-        } else {
-            console.log(data)
-            return []
+async function getList(page, parent_area_id) {
+    const resp = await fetch(`https://api.live.bilibili.com/xlive/web-interface/v1/second/getList?platform=web&parent_area_id=${parent_area_id}&page=${page}&area_id=0`, {
+        method: "GET",
+        headers: {
+            cookie: cookie_str,
+            "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:96.0) Gecko/20100101 Firefox/96.0",
         }
+    })
+    const data = await resp.json()
+    if (data.code === 0) {
+        return data.data.list.map(it => [it.roomid, it.uid])
+    } else {
+        console.log(data)
+        return []
     }
 }
 
@@ -68,12 +67,40 @@ async function getAttentionList() {
 }
 
 /**
+ * @param {Array<Promise<any>>} jobs
+ */
+async function pipe(jobs) {
+    let last_value
+    for (let job of jobs) {
+        last_value = await job(last_value)
+    }
+}
+
+function setGlobal(key) {
+    return (value) => { global[key] = value }
+}
+
+/**
  * @template T
  * @param {(data: T) => void} fn
  * @returns {(arr: Array<T>) => void}
  */
 function forEach(fn) {
-    return (arr) => arr.forEach(fn)
+    return (arr) => arr.forEach((it) => fn(it))
+}
+
+/**
+ * @template T
+ * @template U
+ * @param {T[]} first
+ * @returns {(second: U[]) => [T,U][]}
+ */
+function cross(first) {
+    return (second) => {
+        let cross = []
+        first.forEach(f => second.forEach(s => cross.push([f, s])))
+        return cross
+    }
 }
 
 /**
@@ -87,26 +114,33 @@ function list(num) {
         .map((_, n) => n + 1)
 }
 
-class CookiePaser {
-    /**
-     * @param {string} cookie
-     */
-    constructor(cookie) {
-        this.cookie = new Map(
-            cookie.split(/\s*;\s*/)
-                .map(it => it.split('='))
-        )
-    }
-
-    get(key) {
-        return this.cookie.get(key)
+/**
+ * @template T
+ * @param {(...params)=>Promise<T>|T} fn
+ * @param {(params: T)=>void} callback
+ * @returns {(arr: Array)=>void}
+ */
+function apply(fn, callback) {
+    return (arr) => {
+        const ret = fn(...arr)
+        if (ret.then) {
+            ret.then(callback)
+        } else {
+            callback(ret)
+        }
     }
 }
 
-const cookie = new CookiePaser(cookie_str)
-let attention_list = {
-    inner: [],
-    async set(inner) { this[inner] = inner }
+/**
+ * 
+ * @param {string} cookie_str
+ * @returns {Map<string,string>}
+ */
+function parseCookie(cookie_str) {
+    return new Map(
+        cookie_str.split(/\s*;\s*/)
+            .map(it => it.split('='))
+    )
 }
 
 class RedPacketMonitor {
@@ -120,6 +154,10 @@ class RedPacketMonitor {
         this.close_time = 300000;
     }
 
+    static build(roomid, ruid) {
+        return new RedPacketMonitor(roomid, ruid)
+    }
+
     no_relation_modify() {
         this._no_relation_modify = true;
         return this
@@ -127,13 +165,13 @@ class RedPacketMonitor {
 
     async start() {
         this.closeTimerUpdate()
-        if (attention_list.inner.includes(this.ruid)) {
+        if (global.attention_list.includes(this.ruid)) {
             this.no_relation_modify()
         }
         this.liveflow = new LiveFlow()
             .setCookie(cookie_str)
             .setRoomId(this.room_id)
-            .setUid(Number(cookie.get("DedeUserID")))
+            .setUid(Number(global.cookie.get("DedeUserID")))
             .addCommandHandle("POPULARITY_RED_POCKET_START", async ({ data }) => {
                 console.log(data);
                 if (!this.has_redpacket) {
@@ -150,8 +188,8 @@ class RedPacketMonitor {
                         },
                         body: stringify({
                             lot_id: data.lot_id,
-                            csrf: cookie.get("bili_jct"),
-                            csrf_token: cookie.get("bili_jct"),
+                            csrf: global.cookie.get("bili_jct"),
+                            csrf_token: global.cookie.get("bili_jct"),
                             visit_id: "",
                             jump_from: "",
                             session_id: "",
@@ -206,7 +244,7 @@ class RedPacketMonitor {
                 fid: this.ruid,
                 act,
                 re_src: 0,
-                csrf: cookie.get("bili_jct")
+                csrf: global.cookie.get("bili_jct")
             })
         })
         const data = await resp.json()
@@ -220,13 +258,19 @@ class RedPacketMonitor {
     }
 }
 
-Promise.resolve()
-    .then(getAttentionList)
-    .then(attention_list.set)
-    .then(getAreaList)
-    .then(forEach(
-        id => forEach(
-            page => getList(page)(id)
-                .then(forEach(arg => new RedPacketMonitor(...arg).no_relation_modify().start()))
-        )(list(1))
+pipe([
+    () => require("./cookie.json")["cookie"],
+    parseCookie,
+    setGlobal('cookie'),
+    getAttentionList,
+    setGlobal('attention_list'),
+    getAreaList,
+    cross(list(2)),
+    forEach(apply(
+        getList,
+        forEach(apply(
+            RedPacketMonitor.build,
+            red_packet_monitor => red_packet_monitor.no_relation_modify().start()
+        ))
     ))
+])
