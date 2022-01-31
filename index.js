@@ -4,114 +4,6 @@ const { cookie, cookies = [] } = require("./cookie.json");
 const { default: axios } = require('axios');
 
 /**
- * @template T,U
- * @param {Array<U|Promise<U>|(param: T)=>Promise<U>|U>} jobs
- */
-async function pipe(jobs) {
-    let last_value
-    for (let job of jobs) {
-        try {
-            if (job instanceof Function) {
-                const result = job(last_value)
-                if (result instanceof Promise) {
-                    last_value = await result
-                } else {
-                    last_value = result
-                }
-            } else if (job instanceof Promise) {
-                last_value = await job
-            } else {
-                last_value = job
-            }
-        } catch (error) {
-            console.log(error.message)
-            break
-        }
-    }
-    return last_value
-}
-
-/**
- * @param {Promise<any>[]} promises
- */
-async function waitAll(promises) {
-    return await Promise.all(promises)
-}
-
-/**
- * @param {string} method
- * @param {Array<any>} [params] 
- */
-function call(method, params = []) {
-    return (object) => object[method](...params)
-}
-
-/**
- * @template T
- * @param {T[]} arr
- * @return {(a: T) => T[]}
- */
-function push(arr) {
-    return (a) => {
-        a && arr.push(a)
-        return arr
-    }
-}
-
-/**
- * @template T
- * @param {T} a
- * @return {(arr: T[]) => T[]}
- */
-function insert(a) {
-    return async (arr) => {
-        if (a instanceof Promise) {
-            a = await a
-        }
-        a && arr.push(a)
-        return arr
-    }
-}
-
-/**
- * @template T,U
- * @param {(a: T)=>U} fn
- * @returns {(arr: T[])=>U[]}
- */
-function map(fn) {
-    return (arr) => arr.map(fn)
-}
-
-/**
- * @template T,U
- * @param {T[]|Promise<T[]>} second
- * @returns {(second: U[]) => Promise<[T,U][]>}
- */
-function cross(second) {
-    return async (first) => {
-        if (second instanceof Promise) {
-            second = await second
-        }
-        let cross = []
-        for (const s of second) {
-            for (const f of first) {
-                cross.push([f, s])
-            }
-        }
-        return cross
-    }
-}
-
-/**
- * 
- * @param {number} depth
- * @returns
- */
-function flat(depth) {
-    return (arr) => arr.flat(depth)
-}
-
-/**
  * 1..num
  * @param {number} num
  * @returns 
@@ -120,21 +12,6 @@ function list(num) {
     return Array(num)
         .fill()
         .map((_, n) => n + 1)
-}
-
-/**
- * @template T
- * @param {(...params)=>Promise<T>|T} fn
- */
-function apply(fn) {
-    return async (arr) => {
-        const ret = fn(...arr)
-        if (ret instanceof Promise) {
-            return await ret
-        } else {
-            return ret
-        }
-    }
 }
 
 class BUser {
@@ -211,7 +88,7 @@ class BUser {
 
     /**
      * @param {number} source_id
-     * @returns {Promise<number[]>}
+     * @returns {Promise<number[]>} `parent_area_id`
      */
     async getAreaList(source_id = 1) {
         const { data } = await this.axios.get(
@@ -435,26 +312,36 @@ class RedPacketMonitor {
 }
 
 const announce_buser = new BUser()
+const roomid_set = new Set()
+const busers = {
+    inner: [],
+    /**
+     * @returns {Promise<BUser[]>}
+     */
+    async get() {
+        if (!this.inner.length) {
+            for (const cookie of cookies) {
+                const buser = new BUser(cookie)
+                this.inner.push(await buser.cache({ method: "getAttentionList" }))
+            }
+        }
+        return this.inner
+    }
+}
 
-pipe([
-    announce_buser.getAreaList(),
-    cross(list(2)),
-    map(apply(announce_buser.getRoomListPair.bind(announce_buser))),
-    waitAll,
-    flat(1),
-    map(insert(
-        pipe([
-            cookie,
-            push(cookies),
-            map(BUser.build),
-            map(call("cache", [{ method: "getAttentionList" }])),
-            waitAll,
-        ])
-    )),
-    waitAll,
-    map(apply(RedPacketMonitor.build)),
-    waitAll,
-    map(call("setTotalPriceLimit", [1601])),
-    map(call("start")),
-    waitAll
-])
+setInterval(async () => {
+    for (const areaid of await announce_buser.getAreaList()) {
+        for (const page of list(2)) {
+            for (const [roomid, uid] of await announce_buser.getRoomListPair(areaid, page)) {
+                if (!roomid_set.has(roomid)) {
+                    roomid_set.add(roomid)
+                    new RedPacketMonitor(roomid, uid, await busers.get())
+                        .setTotalPriceLimit(0)
+                        .start()
+                        .catch(console.log)
+                        .finally(() => roomid_set.delete(roomid))
+                }
+            }
+        }
+    }
+}, 30 * 60 * 1000)
