@@ -238,7 +238,7 @@ class RedPacketMonitor {
         this.liveflow = null;
         this.has_redpacket = false;
         this.timer = 0;
-        this.close_time = 300000;
+        this.close_time = 3 * 60 * 1000;
         this.total_price_limit = 0;
     }
 
@@ -336,7 +336,7 @@ async function start() {
                 if (!roomid_set.has(roomid)) {
                     roomid_set.add(roomid)
                     new RedPacketMonitor(roomid, uid, await busers.get())
-                        .setTotalPriceLimit(100000)
+                        .setTotalPriceLimit(0)
                         .start()
                         .catch(console.log)
                         .finally(() => roomid_set.delete(roomid))
