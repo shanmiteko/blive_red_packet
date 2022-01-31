@@ -1,6 +1,6 @@
 {
   "name": "blive_red_packet",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "抢直播间红包",
   "main": "index.js",
   "scripts": {
@@ -9,7 +9,7 @@
   "author": "shanmite",
   "license": "ISC",
   "dependencies": {
-    "bili-live-comment-ws": "1",
-    "node-fetch": "2"
+    "axios": "^0.25.0",
+    "bili-live-comment-ws": "1"
   }
 }
