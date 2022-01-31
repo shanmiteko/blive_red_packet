@@ -329,14 +329,14 @@ const busers = {
     }
 }
 
-setInterval(async () => {
+async function start() {
     for (const areaid of await announce_buser.getAreaList()) {
         for (const page of list(2)) {
             for (const [roomid, uid] of await announce_buser.getRoomListPair(areaid, page)) {
                 if (!roomid_set.has(roomid)) {
                     roomid_set.add(roomid)
                     new RedPacketMonitor(roomid, uid, await busers.get())
-                        .setTotalPriceLimit(0)
+                        .setTotalPriceLimit(100000)
                         .start()
                         .catch(console.log)
                         .finally(() => roomid_set.delete(roomid))
@@ -344,4 +344,8 @@ setInterval(async () => {
             }
         }
     }
-}, 30 * 60 * 1000)
+}
+
+setInterval(start, 15 * 60 * 1000)
+
+start()
