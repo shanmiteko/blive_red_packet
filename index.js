@@ -165,7 +165,7 @@ class BUser {
             this.cookie = new Map()
         }
         /**
-         * @type {Map<string,any>}
+         * @type {Map<string,Map<any,any>>}
          */
         this._cache = new Map()
     }
@@ -185,7 +185,7 @@ class BUser {
      * @param {Request} request
      */
     get(request) {
-        return this._cache.get(request)
+        return this._cache.get(request.method)?.get(JSON.stringify(request.params))
     }
 
     /**
@@ -196,7 +196,12 @@ class BUser {
      */
     async cache(request) {
         const result = await this[request.method](...(request.params || []))
-        this._cache.set(request, result)
+        if (!this._cache.has(request.method)) {
+            this._cache.set(request.method, new Map())
+        }
+        this._cache
+            .set(request.method)
+            .set(JSON.stringify(request.params), result)
         return this
     }
 
