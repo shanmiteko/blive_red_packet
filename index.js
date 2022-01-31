@@ -204,7 +204,7 @@ class BUser {
             this._cache.set(request.method, new Map())
         }
         this._cache
-            .set(request.method)
+            .get(request.method)
             .set(JSON.stringify(request.params), result)
         return this
     }
@@ -362,6 +362,7 @@ class RedPacketMonitor {
         this.has_redpacket = false;
         this.timer = 0;
         this.close_time = 300000;
+        this.total_price_limit = 0;
     }
 
     /**
@@ -374,25 +375,38 @@ class RedPacketMonitor {
         return new RedPacketMonitor(roomid, ruid, busers)
     }
 
+    /**
+     * @param {number} total_price_limit
+     * @returns 
+     */
+    setTotalPriceLimit(total_price_limit) {
+        this.total_price_limit = total_price_limit
+        return this
+    }
+
     async start() {
         this.closeTimerUpdate(this.close_time)
         this.liveflow = new LiveFlow()
             .setRoomId(this.room_id)
             .addCommandHandle("POPULARITY_RED_POCKET_START", ({ data }) => {
                 console.log("POPULARITY_RED_POCKET_START", data)
-                this.has_redpacket = true
                 this.closeTimerUpdate(300000 + data.last_time * 1000)
-                this.busers.forEach(buser => {
-                    Promise.all([
-                        buser.cookie.get("DedeUserID"),
-                        buser
-                            .drawRedPocket(data.lot_id, this.room_id, this.ruid)
-                            .catch(it => it.message),
-                        buser
-                            .getBagList()
-                            .catch(it => it.message)
-                    ]).then(it => console.log(...it))
-                })
+                if (data.total_price > this.total_price_limit) {
+                    this.has_redpacket = true
+                    this.busers.forEach(buser => {
+                        Promise.all([
+                            buser.cookie.get("DedeUserID"),
+                            buser
+                                .drawRedPocket(data.lot_id, this.room_id, this.ruid)
+                                .catch(it => it.message),
+                            buser
+                                .getBagList()
+                                .catch(it => it.message)
+                        ]).then(it => console.log(...it))
+                    })
+                } else {
+                    console.log(data.total_price, '<', this.total_price_limit)
+                }
             })
         await this.liveflow.run()
     }
@@ -440,6 +454,7 @@ pipe([
     waitAll,
     map(apply(RedPacketMonitor.build)),
     waitAll,
+    map(call("setTotalPriceLimit", [1601])),
     map(call("start")),
     waitAll
 ])
