@@ -185,7 +185,11 @@ class BUser {
      * @param {Request} request
      */
     get(request) {
-        return this._cache.get(request.method)?.get(JSON.stringify(request.params))
+        if (this._cache.has(request.method)) {
+            return this._cache
+                .get(request.method)
+                .get(JSON.stringify(request.params))
+        }
     }
 
     /**
