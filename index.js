@@ -48,14 +48,6 @@ class BUser {
     }
 
     /**
-     * @param {string} [cookie]
-     * @returns
-     */
-    static build(cookie) {
-        return new BUser(cookie)
-    }
-
-    /**
      * @typedef Request
      * @property {string} method
      * @property {any[]} [params]
@@ -237,19 +229,10 @@ class RedPacketMonitor {
         this.ruid = ruid;
         this.liveflow = null;
         this.has_redpacket = false;
+        this.replace_time = 0;
         this.timer = 0;
         this.close_time = 3 * 60 * 1000;
         this.total_price_limit = 0;
-    }
-
-    /**
-     * @param {number} roomid
-     * @param {number} ruid
-     * @param {BUser[]} busers
-     * @returns 
-     */
-    static build(roomid, ruid, busers) {
-        return new RedPacketMonitor(roomid, ruid, busers)
     }
 
     /**
@@ -267,23 +250,54 @@ class RedPacketMonitor {
             .setRoomId(this.room_id)
             .addCommandHandle("POPULARITY_RED_POCKET_START", ({ data }) => {
                 console.log("POPULARITY_RED_POCKET_START", data)
-                this.closeTimerUpdate(300000 + data.last_time * 1000)
                 if (data.total_price > this.total_price_limit) {
                     this.has_redpacket = true
-                    this.busers.forEach(buser => {
-                        Promise.all([
-                            buser.cookie.get("DedeUserID"),
-                            buser
-                                .drawRedPocket(data.lot_id, this.room_id, this.ruid)
-                                .catch(it => it.message),
-                            buser
-                                .getBagList()
-                                .catch(it => it.message)
-                        ]).then(it => console.log(...it))
-                    })
+                    const data_now = ~~(Date.now() / 1000)
+                    if (this.replace_time < data_now) {
+                        this.replace_time = data.replace_time
+                        this.busers.forEach(buser => {
+                            Promise.all([
+                                buser.cookie.get("DedeUserID"),
+                                buser
+                                    .drawRedPocket(data.lot_id, this.room_id, this.ruid)
+                                    .catch(it => it.message),
+                                buser
+                                    .getBagList()
+                                    .catch(it => it.message)
+                            ]).then(it => console.log(...it))
+                        })
+                    } else {
+                        setTimeout(() => {
+                            this.busers.forEach(buser => {
+                                Promise.all([
+                                    buser.cookie.get("DedeUserID"),
+                                    buser
+                                        .drawRedPocket(data.lot_id, this.room_id, this.ruid)
+                                        .catch(it => it.message),
+                                    buser
+                                        .getBagList()
+                                        .catch(it => it.message)
+                                ]).then(it => console.log(...it))
+                            })
+                        }, this.replace_time - data_now)
+                        this.replace_time = data.replace_time
+                    }
+                    this.closeTimerUpdate(this.replace_time - data_now + this.close_time)
                 } else {
                     console.log(data.total_price, '<', this.total_price_limit)
                 }
+            })
+            .addCommandHandle("POPULARITY_RED_POCKET_WINNER_LIST", ({ data }) => {
+                for (const winner of data.winner_info) {
+                    for (const buser of this.busers) {
+                        const uid = buser.cookie.get("DedeUserID")
+                        if (winner.uid == uid) {
+                            console.log("POPULARITY_RED_POCKET_WINNER_LIST", uid, "GET")
+                            return
+                        }
+                    }
+                }
+                console.log("POPULARITY_RED_POCKET_WINNER_LIST", "NO");
             })
         await this.liveflow.run()
     }
@@ -331,7 +345,7 @@ const busers = {
 
 async function start() {
     for (const areaid of await announce_buser.getAreaList()) {
-        for (const page of list(2)) {
+        for (const page of list(1)) {
             for (const [roomid, uid] of await announce_buser.getRoomListPair(areaid, page)) {
                 if (!roomid_set.has(roomid)) {
                     roomid_set.add(roomid)
@@ -346,6 +360,6 @@ async function start() {
     }
 }
 
-setInterval(start, 15 * 60 * 1000)
+setInterval(start, 10 * 60 * 1000)
 
 start()
