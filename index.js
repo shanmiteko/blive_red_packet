@@ -229,10 +229,15 @@ class RedPacketMonitor {
         this.ruid = ruid;
         this.liveflow = null;
         this.has_redpacket = false;
-        this.replace_time = 0;
+        this.remove_time = 0;
+        this.draw_delay = 0;
         this.timer = 0;
         this.close_time = 3 * 60 * 1000;
         this.total_price_limit = 0;
+    }
+
+    log(...args) {
+        console.log(`room(${this.room_id})`, `uid(${this.ruid})`, ...args);
     }
 
     /**
@@ -244,47 +249,44 @@ class RedPacketMonitor {
         return this
     }
 
+    /**
+     * 0-180s
+     * @param {number} delay
+     * @returns
+     */
+    setDrawDelay(delay) {
+        this.draw_delay = delay
+        return this
+    }
+
     async start() {
         this.closeTimerUpdate(this.close_time)
         this.liveflow = new LiveFlow()
             .setRoomId(this.room_id)
             .addCommandHandle("POPULARITY_RED_POCKET_START", ({ data }) => {
-                console.log("POPULARITY_RED_POCKET_START", data)
+                this.log("POPULARITY_RED_POCKET_START", data)
                 if (data.total_price > this.total_price_limit) {
                     this.has_redpacket = true
                     const data_now = ~~(Date.now() / 1000)
-                    if (this.replace_time < data_now) {
-                        this.replace_time = data.replace_time
+                    const { last_time, remove_time } = data
+                    // start_time + last_time -> end_time + 10s -> replace_time + 5s -> remove_time
+                    setTimeout(() => {
                         this.busers.forEach(buser => {
                             Promise.all([
-                                buser.cookie.get("DedeUserID"),
+                                `you(${buser.cookie.get("DedeUserID")})`,
                                 buser
                                     .drawRedPocket(data.lot_id, this.room_id, this.ruid)
                                     .catch(it => it.message),
                                 buser
                                     .getBagList()
                                     .catch(it => it.message)
-                            ]).then(it => console.log(...it))
+                            ]).then(it => this.log(...it))
                         })
-                    } else {
-                        setTimeout(() => {
-                            this.busers.forEach(buser => {
-                                Promise.all([
-                                    buser.cookie.get("DedeUserID"),
-                                    buser
-                                        .drawRedPocket(data.lot_id, this.room_id, this.ruid)
-                                        .catch(it => it.message),
-                                    buser
-                                        .getBagList()
-                                        .catch(it => it.message)
-                                ]).then(it => console.log(...it))
-                            })
-                        }, this.replace_time - data_now)
-                        this.replace_time = data.replace_time
-                    }
-                    this.closeTimerUpdate(this.replace_time - data_now + this.close_time)
+                    }, (this.draw_delay % last_time) * 1000 + (this.remove_time && (this.remove_time - data_now)))
+                    this.remove_time = remove_time
+                    this.closeTimerUpdate(this.remove_time - data_now + this.close_time)
                 } else {
-                    console.log(data.total_price, '<', this.total_price_limit)
+                    this.log(data.total_price, '<', this.total_price_limit)
                 }
             })
             .addCommandHandle("POPULARITY_RED_POCKET_WINNER_LIST", ({ data }) => {
@@ -292,19 +294,19 @@ class RedPacketMonitor {
                     for (const buser of this.busers) {
                         const uid = buser.cookie.get("DedeUserID")
                         if (winner.uid == uid) {
-                            console.log("POPULARITY_RED_POCKET_WINNER_LIST", uid, "GET")
+                            this.log("POPULARITY_RED_POCKET_WINNER_LIST", `you(${uid})`, "GET")
                             return
                         }
                     }
                 }
-                console.log("POPULARITY_RED_POCKET_WINNER_LIST", "NO");
+                this.log("POPULARITY_RED_POCKET_WINNER_LIST", "NO");
             })
         await this.liveflow.run()
     }
 
     closeTimerUpdate(close_time) {
         clearTimeout(this.timer)
-        console.log(`will disconnect in ${close_time}ms`);
+        this.log(`will disconnect in ${close_time}ms`);
         this.timer = setTimeout(() => {
             this.close()
         }, close_time);
@@ -317,7 +319,7 @@ class RedPacketMonitor {
                 if (!attention_list.includes(this.ruid) && this.has_redpacket) {
                     return buser
                         .relationModify(this.ruid, 2)
-                        .catch((err) => console.log(err.message))
+                        .catch((err) => this.log(err.message))
                 }
             })
         )
@@ -351,6 +353,7 @@ async function start() {
                     roomid_set.add(roomid)
                     new RedPacketMonitor(roomid, uid, await busers.get())
                         .setTotalPriceLimit(0)
+                        .setDrawDelay(100)
                         .start()
                         .catch(console.log)
                         .finally(() => roomid_set.delete(roomid))
@@ -360,6 +363,6 @@ async function start() {
     }
 }
 
-setInterval(start, 10 * 60 * 1000)
+// setInterval(start, 10 * 60 * 1000)
 
 start()
